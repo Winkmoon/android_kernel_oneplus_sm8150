@@ -116,7 +116,7 @@ void ir_lirc_raw_event(struct rc_dev *dev, struct ir_raw_event ev)
 		if (LIRC_IS_TIMEOUT(sample) && !fh->send_timeout_reports)
 			continue;
 		if (kfifo_put(&fh->rawir, sample))
-			wake_up_poll(&fh->wait_poll, EPOLLIN | EPOLLRDNORM);
+			wake_up_poll(&fh->wait_poll, POLLIN | POLLRDNORM);
 	}
 	spin_unlock_irqrestore(&dev->lirc_fh_lock, flags);
 }
@@ -137,7 +137,7 @@ void ir_lirc_scancode_event(struct rc_dev *dev, struct lirc_scancode *lsc)
 	spin_lock_irqsave(&dev->lirc_fh_lock, flags);
 	list_for_each_entry(fh, &dev->lirc_fh, list) {
 		if (kfifo_put(&fh->scancodes, *lsc))
-			wake_up_poll(&fh->wait_poll, EPOLLIN | EPOLLRDNORM);
+			wake_up_poll(&fh->wait_poll, POLLIN | POLLRDNORM);
 	}
 	spin_unlock_irqrestore(&dev->lirc_fh_lock, flags);
 }
@@ -622,15 +622,15 @@ static unsigned int ir_lirc_poll(struct file *file,
 	poll_wait(file, &fh->wait_poll, wait);
 
 	if (!rcdev->registered) {
-		events = EPOLLHUP | EPOLLERR;
+		events = POLLHUP | POLLERR;
 	} else if (rcdev->driver_type != RC_DRIVER_IR_RAW_TX) {
 		if (fh->rec_mode == LIRC_MODE_SCANCODE &&
 		    !kfifo_is_empty(&fh->scancodes))
-			events = EPOLLIN | EPOLLRDNORM;
+			events = POLLIN | POLLRDNORM;
 
 		if (fh->rec_mode == LIRC_MODE_MODE2 &&
 		    !kfifo_is_empty(&fh->rawir))
-			events = EPOLLIN | EPOLLRDNORM;
+			events = POLLIN | POLLRDNORM;
 	}
 
 	return events;
@@ -816,7 +816,7 @@ void ir_lirc_unregister(struct rc_dev *dev)
 
 	spin_lock_irqsave(&dev->lirc_fh_lock, flags);
 	list_for_each_entry(fh, &dev->lirc_fh, list)
-		wake_up_poll(&fh->wait_poll, EPOLLHUP | EPOLLERR);
+		wake_up_poll(&fh->wait_poll, POLLHUP | POLLERR);
 	spin_unlock_irqrestore(&dev->lirc_fh_lock, flags);
 
 	cdev_device_del(&dev->lirc_cdev, &dev->lirc_dev);
