@@ -708,8 +708,8 @@ static void flush_page(struct device *dev, const void *virt, phys_addr_t phys)
 	__dma_flush_area(virt, PAGE_SIZE);
 }
 
-static struct page **__atomic_get_pages(void *addr);
-static struct page **__iommu_get_pages(void *cpu_addr, unsigned long attrs);
+static struct page **__atomic_get_pages(void *addr) __maybe_unused;
+static struct page **__iommu_get_pages(void *cpu_addr, unsigned long attrs) __maybe_unused;
 
 static void *__iommu_alloc_attrs(struct device *dev, size_t size,
 				 dma_addr_t *handle, gfp_t gfp,
