@@ -95,9 +95,6 @@ walt_dec_cfs_rq_stats(struct cfs_rq *cfs_rq, struct task_struct *p) {}
 
 #endif
 
-#ifndef mark_reserved
-static inline void mark_reserved(int cpu) { }
-#endif
 
 /*
  * Targeted preemption latency for CPU-bound tasks:
@@ -9441,12 +9438,17 @@ redo:
 			break;
 
 		continue;
-next:
-		trace_sched_load_balance_skip_tasks(env->src_cpu, env->dst_cpu,
-				env->src_grp_type, p->pid, load, task_util(p),
-				cpumask_bits(&p->cpus_allowed)[0]);
-		list_move_tail(&p->se.group_node, tasks);
-	}
+
+    {
+        int idle = env->idle;
+        int loop = env->loop;
+        int imbalance = env->imbalance;
+        
+        trace_sched_load_balance_skip_tasks(env->src_cpu, env->dst_cpu,
+            idle, loop, imbalance);
+    }
+	
+	list_move_tail(&p->se.group_node, tasks);
 
 	if (env->flags & (LBF_IGNORE_BIG_TASKS |
 			LBF_IGNORE_PREFERRED_CLUSTER_TASKS) && !detached) {
