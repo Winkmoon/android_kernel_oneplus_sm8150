@@ -360,6 +360,7 @@ cmd_undef_syms = echo
 endif
 
 # Built-in and composite module parts
+CFLAGS_empty.o := -mcpu=cortex-a76 -march=armv8.2-a+crc+crypto -Wno-error
 $(obj)/%.o: $(src)/%.c $(recordmcount_source) $(objtool_dep) FORCE
 	$(call cmd,force_checksrc)
 	$(call if_changed_rule,cc_o_c)
