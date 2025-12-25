@@ -97,7 +97,7 @@ jobs:
         run: |
           cd kernel_workspace
           cd common
-          
+          sudo apt update && sudo apt install -y libelf-dev elfutils libelf1 binutils-aarch64-linux-gnu
           export ARCH=arm64
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-gnu-
