@@ -95,6 +95,10 @@ walt_dec_cfs_rq_stats(struct cfs_rq *cfs_rq, struct task_struct *p) {}
 
 #endif
 
+#ifndef mark_reserved
+static inline void mark_reserved(int cpu) { }
+#endif
+
 /*
  * Targeted preemption latency for CPU-bound tasks:
  *
