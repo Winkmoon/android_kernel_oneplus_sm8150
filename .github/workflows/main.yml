@@ -1,108 +1,184 @@
-name: build
+name: Building
+env:
+  TZ: Asia/Shanghai
+  CPU: 'sm8150'
+  FEIL: 'miao'
+  ANDROID_VERSION: 'android16'
+  KERNEL_VERSION: '4.14'
+  KERNEL_NAME: 'ShirokoNeko'
+  KERNELSU_VARIANT: 'SukiSU-Ultra'
+  KERNELSU_BRANCH: 'main-susfs'
 on:
-  workflow_dispatch:  
-
+  workflow_dispatch:
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    outputs:
+      ksuver: ${{ steps.ksu_version.outputs.ksuver }}
     steps:
-    - uses: actions/checkout@v4
+      - name: 最大化建筑空间
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          swap-size-mb: 8192
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+      
+      - name: 安装配置环境依赖
+        run: |
+          sudo apt update -y
+          sudo apt install -y \
+            build-essential \
+            flex bison \
+            dwarves \
+            libssl-dev \
+            libelf-dev \
+            bc \
+            python3 \
+            python-is-python3 \
+            git \
+            make \
+            cmake \
+            zip \
+            curl \
+            wget \
+            gnupg \
+            gcc-multilib \
+            g++-multilib \
+            ccache \
+            rsync \
+            binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabihf
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/android-11.0.0_r3/clang-r383902b.tar.gz
+          mkdir -p aosp-clang
+          tar -xzf clang-r383902b.tar.gz -C aosp-clang
+          rm clang-r383902b.tar.gz
+          echo "AOSP_CLANG_PATH=$(pwd)/aosp-clang" >> $GITHUB_ENV
+          echo "PATH=$(pwd)/aosp-clang/bin:$PATH" >> $GITHUB_ENV
+      - name: 初始化源码仓库
+        run: |
+          rm -rf kernel_workspace && mkdir kernel_workspace && cd kernel_workspace
+          git clone --depth=1 https://github.com/Winkmoon/android_kernel_oneplus_sm8150.git -b 16.0 common
+          rm common/android/abi_gki_protected_exports_* || true
+          for f in common/scripts/setlocalversion; do
+            sed -i 's/ -dirty//g' "$f"
+            sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' "$f"
+          done
+          sed -i 's/ERR_get_error_all(&err_state)/ERR_get_error()/g' common/scripts/extract-cert.c
+          sed -i 's/ERR_STATE_file(err_state)/"unknown"/g' common/scripts/extract-cert.c
+          sed -i 's/ERR_STATE_line(err_state)/0/g' common/scripts/extract-cert.c
+      
+      - name: 添加 SukiSU-Ultra
+        id: ksu_version
+        run: |
+          cd kernel_workspace
+          curl -LSs "https://raw.githubusercontent.com/Winkmoon/SukiSU-Ultra-R.I.P/main/kernel/setup.sh" | bash -s main-susfs
 
-    - name: 构建编译内核环境
-      run: |
-        sudo apt-get update
-        sudo -E apt-get -y -qq install git make bc bison ccache openssl dos2unix zip kmod cpio flex libelf-dev curl libssl-dev libtfm-dev wget device-tree-compiler ca-certificates python3 python2 binutils binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
-        mkdir -p $GITHUB_WORKSPACE/kernel_workspace
-    - name: 下载 Gcc编译器
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        
-        mkdir gcc64
-        wget -O gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
-        tar -C gcc64/ -zxvf gcc-aarch64.tar.gz
-    
-        mkdir gcc32
-        wget -O gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
-        tar -C gcc32/ -zxvf gcc-arm.tar.gz
+      
+      
+      - name: 添加制作名称
+        run: |
+          cd kernel_workspace
+          cd common
+          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
+            for f in ./scripts/setlocalversion; do
+              sed -i "\$s|echo \"\\\$res\"|echo \"-${{ github.event.inputs.kernel_suffix }}\"|" "$f"
+            done
+          else
+            for f in ./scripts/setlocalversion; do
+              sed -i "\$s|echo \"\\\$res\"|echo \"-${{ env.KERNEL_NAME }}\"|" "$f"
+            done
+          fi
+      
+      - name: 构建内核
+        run: |
+          cd kernel_workspace
+          cd common
+          
+          export ARCH=arm64
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabihf-
+          export PATH=$AOSP_CLANG_PATH/bin:$PATH
+          export LLVM=1
+          export LLVM_IAS=0
+          export KCFLAGS="-Wno-error -Wno-deprecated-declarations"
+          
+          make O=out xinran_test_sm8150_defconfig
+          make -j$(nproc --all) O=out \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            STRIP=llvm-strip \
+            HOSTCC=clang \
+            HOSTLD=ld.lld
+      
+      - name: 克隆 AnyKernel3 并打包
+        run: |
+          cd kernel_workspace
+          cd common
+          git clone https://github.com/Winkmoon/AnyKernel3 --depth=1
+          rm -rf ./AnyKernel3/.git
+          cd AnyKernel3
+          cp ../out/arch/arm64/boot/Image ./Image
+          if [ ! -f ./Image ]; then
+            exit 1
+          fi
+            zip -r ../AnyKernel3_${{ env.KSUVER }}_${{ env.KERNEL_VERSION }}_${{ env.KERNEL_NAME }}.zip ./*
+      
+      - name: 上传 ZIP 工件
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel_ZIP_Artifacts
+          path: ${{ github.workspace }}/kernel_workspace/common/*.zip
 
-    - name: 下载Clang编译器
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        mkdir clang-aosp
-        git clone -q --depth=1 https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-6443078 -b 10.0 clang-aosp
-    - name: 下载内核源码
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone --depth 1 -b 16.0 https://github.com/Winkmoon/android_kernel_oneplus_sm8150 android-kernel
-        cd android-kernel
-    - name: 设置ccache缓存
-      uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: build-kernel-mido-kernel
-        max-size: 5G
-
-    - name: 开始编译内核
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$GITHUB_WORKSPACE/kernel_workspace/gcc64/bin:$GITHUB_WORKSPACE/kernel_workspace/gcc32/bin:$PATH
-        export KBUILD_BUILD_HOST=Xinran_LOVE_Bai
-        export KBUILD_BUILD_USER=kuan-@Xinran_StarBai
-        export ARCH=arm64
-        export SUBARCH=arm64
-        make -s -j$(nproc --all) O=out ARCH=arm64 sm8150_oplus_xinran_a16_defconfig
-        make -j$(nproc --all) CC="ccache clang" O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- LD=ld.lld
-    - name: 制作Anykernel3卡刷包
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone https://github.com/Winkmoon/AnyKernel3
-        cp android-kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-        rm -rf AnyKernel3/.git* AnyKernel3/README.md
-        cd AnyKernel3
-        zip -r ../ShirokoNeko-kernel.zip .
-    - name: 生成版本号
-      id: version
-      run: |
-        echo "RELEASE_VERSION=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
-        echo "TAG_NAME=v$(date +'%Y.%m.%d')" >> $GITHUB_ENV
-    - name: 上传构建产物作为工作流 artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Xinran_StarBai-构建产物
-        path: |
-          kernel_workspace/ShirokoNeko-kernel.zip
-          kernel_workspace/android-kernel/out/arch/arm64/boot/Image.gz
-    - name: 创建GitHub Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ env.TAG_NAME }}
-        release_name: oplus@Xinran_StarBai-${{ env.RELEASE_VERSION }}
-        body: |
-          OPPO/Realme
-          编译信息：
-          - 内核版本：4.14
-          - 支持机型：oplus
-        draft: false
-        prerelease: false
-
-    - name: 上传卡刷包到Release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: kernel_workspace/ShirokoNeko-kernel.zip
-        asset_name: ShirokoNeko-kernel-${{ env.RELEASE_VERSION }}.zip
-        asset_content_type: application/zip
-
-    - name: 上传内核镜像到Release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: kernel_workspace/android-kernel/out/arch/arm64/boot/Image.gz
-        asset_name: ShirokoNeko-kernel-${{ env.RELEASE_VERSION }}-Image.gz
-        asset_content_type: application/gzip
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      actions: read
+      
+    steps:
+      - name: 下载 ZIP 工件
+        uses: actions/download-artifact@v4
+        with:
+          name: Kernel_ZIP_Artifacts
+          path: ./release_zips
+      
+      - name: 设置环境变量
+        run: |
+          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
+            FULL_VERSION=${{ format('{0}.118-{1}', env.KERNEL_VERSION, github.event.inputs.kernel_suffix) }}
+            echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
+          else
+            FULL_VERSION=${{ format('{0}.118-{1}', env.KERNEL_VERSION, env.KERNEL_NAME) }}
+            echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
+          fi
+          TIME="$(TZ='Asia/Shanghai' date +'%y%m%d%H%M%S')"
+          TIME_FORM="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')"
+          echo "TIME=$TIME" >> $GITHUB_ENV
+          echo "TIME_FORM=$TIME_FORM" >> $GITHUB_ENV
+          TAG_HEAD="4.14"
+          echo "TAG_HEAD=$TAG_HEAD" >> $GITHUB_ENV
+      
+      - name: 创建发布
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "${{ env.TAG_HEAD }}-${{ env.TIME }}"
+          name: "${{ env.TAG_HEAD }}-${{ env.FULL_VERSION }}"
+          body: |
+            ### sm8150内核 | 构建信息
+            - 内核版本号: 4.14
+            - 编译时间: ${{ env.TIME_FORM }}
+          draft: false
+          prerelease: false
+          files: |
+            release_zips/AnyKernel3_*.zip
