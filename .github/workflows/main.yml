@@ -75,6 +75,8 @@ jobs:
         id: ksu_version
         run: |
           cd kernel_workspace
+          rm -rf KernelSU
+          rm -rf drivers/kernelsu
           curl -LSs "https://raw.githubusercontent.com/Winkmoon/SukiSU-Ultra-R.I.P/main/kernel/setup.sh" | bash -s main-susfs
 
       
@@ -107,7 +109,7 @@ jobs:
           export LLVM_IAS=0
           export KCFLAGS="-Wno-error -Wno-deprecated-declarations"
           
-          make O=out xinran_test_sm8150_defconfig
+          make O=out sm8150_oplus_xinran_a16_defconfig
           make -j$(nproc --all) O=out \
             CC=clang \
             LD=ld.lld \
