@@ -40,6 +40,25 @@
 #include "tune.h"
 #include "walt.h"
 
+/* 添加缺失的定义 */
+#ifndef FULL_THROTTLE_BOOST
+#define FULL_THROTTLE_BOOST 2
+#endif
+
+#ifndef sched_boost
+static inline int sched_boost(void) { return 0; }
+#endif
+
+#ifndef trace_sched_load_balance_skip_tasks
+#define trace_sched_load_balance_skip_tasks(src_cpu, dst_cpu, idle, loop, imbalance) \
+	do { } while (0)
+#endif
+
+#ifndef mark_reserved
+static inline void mark_reserved(int cpu) { }
+#endif
+
+
 #ifdef CONFIG_SMP
 static inline bool task_fits_max(struct task_struct *p, int cpu);
 #endif /* CONFIG_SMP */
