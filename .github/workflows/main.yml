@@ -49,7 +49,7 @@ jobs:
         export KBUILD_BUILD_USER=kuan-@Xinran_StarBai
         export ARCH=arm64
         export SUBARCH=arm64
-        make -s -j$(nproc --all) O=out ARCH=arm64 xinran_test_sm8150_defconfig
+        make -s -j$(nproc --all) O=out ARCH=arm64 sm8150_oplus_xinran_a16_defconfig
         make -j$(nproc --all) CC="ccache clang" O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- LD=ld.lld
     - name: 制作Anykernel3卡刷包
       run: |
